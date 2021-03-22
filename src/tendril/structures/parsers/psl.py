@@ -31,9 +31,18 @@ class PslParserCSV(ValidatableBase):
     _ident_name = [("SDrawingNo", "SAlt"), ("Description", )]
     _parent_ident_name = [("DrawingNo", "Alt")]
 
+    _qty_name = "QPC"
+    _refdes_name = "Item"
+    _desc_name = "Description"
+
+    _type_name = "St"
+    _type_assembly = "AS"
+    _type_part = "CO"
+
+    _handle_qty = False
+
     def __init__(self, psl_path, vctx=None):
         self._psl_path = psl_path
-        self._bom_reader = None
         self._meta_data = {}
         self._columns = []
         self._active_parents = {}
@@ -94,15 +103,19 @@ class PslParserCSV(ValidatableBase):
     def _generate_line_entities(self, line):
         line_entities = []
         line_ident = self._extract_ident(line)
-        qty = int(line["QPC"])
+
+        if self._handle_qty:
+            qty = int(line[self._qty_name])
+        else:
+            qty = 1
 
         for i in range(qty):
             line_entity = GenericEntity()
-            refdes = line["Item"]
+            refdes = line[self._refdes_name]
             if qty > 1:
                 refdes += chr(ord('a') + i)
-            line_entity.define(ident=line_ident, desc=line["Description"], refdes=refdes)
-            if line["St"] == "AS":
+            line_entity.define(ident=line_ident, desc=line[self._desc_name], refdes=refdes)
+            if line[self._type_name] == self._type_assembly:
                 line_entity.structure = BasicContainer(owner=line_entity)
             line_entities.append(line_entity)
         return line_entities
@@ -157,14 +170,13 @@ class PslParserCSV(ValidatableBase):
         for line in reader:
             self._parse_line(line)
 
+        psl.close()
         return self._owner
 
     def cleanup(self):
-        if self._bom_reader:
-            self._bom_reader.close()
+        pass
 
 
 if __name__ == '__main__':
-    ident = "MD685v08 LHB SCN Shell"
     pslpath = "/home/chintal/orgs/scratch/MD685v08 LHB SCN Shell.csv"
 
