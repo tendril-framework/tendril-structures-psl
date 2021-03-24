@@ -1,6 +1,7 @@
 
 
 import csv
+from collections import namedtuple
 
 from tendril.validation.base import ValidatableBase
 from tendril.validation.columns import RequiredColumnMissingError
@@ -14,14 +15,18 @@ from tendril.utils import log
 logger = log.get_logger(__name__, level=log.DEFAULT)
 
 
+IdentSpec = namedtuple("IdentSpec", "domain, fmt, parts")
+ParseSpec = namedtuple("ParseSpec", "fmt, parts")
+
+
 class MetadataParseException(Exception):
     pass
 
 
 class PslParserBase(ValidatableBase):
     _meta = ["ident", "revision", "description"]
-    _owner_ident_name = ["{0}r{1}", "ident", "revision"]
-    _owner_desc_name = ["{}", "description"]
+    _owner_ident_name = ParseSpec("{0}r{1}", ["ident", "revision"])
+    _owner_desc_name = ParseSpec("{}", ["description"])
 
     def __init__(self, psl_path, vctx=None):
         self._psl_path = psl_path
@@ -38,12 +43,16 @@ class PslParserBase(ValidatableBase):
 
     def _create_owner(self):
         self._owner = GenericEntity()
-        self._owner.define(ident=self.owner_ident, desc=self.owner_desc, refdes=None)
+        self._owner.define(ident=self.owner_ident,
+                           desc=self.owner_desc,
+                           refdes=None)
         self._owner.structure = BasicContainer(owner=self._owner)
 
     def _process_meta(self):
-        self.owner_ident = self._owner_ident_name[0].format(*[self._meta_data[x] for x in self._owner_ident_name[1:]])
-        self.owner_desc = self._owner_desc_name[1].format(*[self._meta_data[x] for x in self._owner_desc_name[1:]])
+        self.owner_ident = self._owner_ident_name.fmt.format(
+            *[self._meta_data[x] for x in self._owner_ident_name.parts])
+        self.owner_desc = self._owner_desc_name.fmt.format(
+            *[self._meta_data[x] for x in self._owner_desc_name.parts])
 
     def _read_meta(self, psl):
         raise NotImplementedError
@@ -56,8 +65,9 @@ class PslParserBase(ValidatableBase):
 
 
 class PslParserLineReader(PslParserBase):
-    _ident_name = [("{0}", "ident"), ("{}", "description", )]
-    _parent_ident_name = [("{0}", "parent")]
+    _ident_name = [IdentSpec("cadfiles", "{0}", ["ident"]),
+                   IdentSpec("materials", "{}", ["description"])]
+    _parent_ident_name = [ParseSpec("{0}", ["parent"])]
 
     _handle_qty = True
 
@@ -68,9 +78,12 @@ class PslParserLineReader(PslParserBase):
     @staticmethod
     def _extract_composite_value(line, options):
         for option in options:
-            candidate = option[0].format(*[line[x] for x in option[1:]]).strip()
+            candidate = option.fmt.format(*[line[x] for x in option.parts]).strip()
             if candidate:
-                return candidate
+                if isinstance(option, IdentSpec):
+                    return candidate, option.domain
+                else:
+                    return candidate
 
     def _extract_ident(self, line):
         return self._extract_composite_value(line, self._ident_name)
@@ -80,7 +93,7 @@ class PslParserLineReader(PslParserBase):
 
     def _generate_line_entities(self, line):
         line_entities = []
-        line_ident = self._extract_ident(line)
+        line_ident, domain = self._extract_ident(line)
 
         if self._handle_qty:
             qty = int(line[self._qty_name])
@@ -92,7 +105,8 @@ class PslParserLineReader(PslParserBase):
             refdes = line[self._refdes_name]
             if qty > 1:
                 refdes += chr(ord('a') + i)
-            line_entity.define(ident=line_ident, desc=line[self._desc_name], refdes=refdes)
+            line_entity.define(ident=line_ident, desc=line[self._desc_name],
+                               refdes=refdes, domain=domain)
             if line[self._type_name] == self._type_assembly:
                 line_entity.structure = BasicContainer(owner=line_entity)
             line_entities.append(line_entity)
@@ -157,11 +171,13 @@ class PslParserLineReader(PslParserBase):
 class PslParserCSV(PslParserLineReader):
     _delimiter = ','
 
-    _ident_name = [("{0} {1}", "SDrawingNo", "SAlt"), ("{}", "Description",)]
-    _parent_ident_name = [("{0} {1}", "DrawingNo", "Alt")]
+    _ident_name = [IdentSpec("cadfiles", "{0} {1}", ["SDrawingNo", "SAlt"]),
+                   IdentSpec("materials", "{}", ["Description"])]
 
-    _expected_columns = ["Page", "PsNo", "Lv", "DrawingNo", "Alt", "Item",
-                         "SDrawingNo", "SAlt", "Description", "St", "QPC"]
+    _parent_ident_name = [ParseSpec("{0} {1}", ["DrawingNo", "Alt"])]
+
+    _expected_columns = ["level", "DrawingNo", "Alt", "refdes",
+                         "SDrawingNo", "SAlt", "description", "type", "qty"]
 
     _level_name = "level"
     _qty_name = "qty"
@@ -227,14 +243,16 @@ class PslParserCSV(PslParserLineReader):
 
 class PslParserTMIR(PslParserCSV):
     _meta = ["CCODE", "VERSION", "COACHNAME"]
-    _owner_ident_name = ["{0} v{1}", "CCODE", "VERSION"]
-    _owner_desc_name = ["{}", "COACHNAME"]
+
+    _owner_ident_name = ParseSpec("{0} v{1}", ["CCODE", "VERSION"])
+    _owner_desc_name = ParseSpec("{}", ["COACHNAME"])
 
     _expected_columns = ["Page", "PsNo", "Lv", "DrawingNo", "Alt", "Item",
                          "SDrawingNo", "SAlt", "Description", "St", "QPC"]
 
-    _ident_name = [("{0} {1}", "SDrawingNo", "SAlt"), ("{}", "Description",)]
-    _parent_ident_name = [("{0} {1}", "DrawingNo", "Alt")]
+    _ident_name = [IdentSpec("cadfiles", "{0} {1}", ["SDrawingNo", "SAlt"]),
+                   IdentSpec("materials", "{}", ["Description"])]
+    _parent_ident_name = [ParseSpec("{0} {1}", ["DrawingNo", "Alt"])]
 
     _level_name = "Lv"
     _qty_name = "QPC"
