@@ -12,6 +12,8 @@ from tendril.structures.containers import BasicContainer
 from tendril.entities.base import EntityHasNoStructure
 
 from tendril.utils import log
+
+
 logger = log.get_logger(__name__, level=log.DEFAULT)
 
 
@@ -241,29 +243,8 @@ class PslParserCSV(PslParserLineReader):
         pass
 
 
-class PslParserTMIR(PslParserCSV):
-    _meta = ["CCODE", "VERSION", "COACHNAME"]
-
-    _owner_ident_name = ParseSpec("{0} v{1}", ["CCODE", "VERSION"])
-    _owner_desc_name = ParseSpec("{}", ["COACHNAME"])
-
-    _expected_columns = ["Page", "PsNo", "Lv", "DrawingNo", "Alt", "Item",
-                         "SDrawingNo", "SAlt", "Description", "St", "QPC"]
-
-    _ident_name = [IdentSpec("cadfiles", "{0} {1}", ["SDrawingNo", "SAlt"]),
-                   IdentSpec("materials", "{}", ["Description"])]
-    _parent_ident_name = [ParseSpec("{0} {1}", ["DrawingNo", "Alt"])]
-
-    _level_name = "Lv"
-    _qty_name = "QPC"
-    _refdes_name = "Item"
-    _desc_name = "Description"
-
-    _type_name = "St"
-    _type_assembly = "AS"
-    _type_part = "CO"
-
-    _handle_qty = False
+def install(manager):
+    manager.install("PslParserCSV", PslParserCSV, "")
 
 
 if __name__ == '__main__':
