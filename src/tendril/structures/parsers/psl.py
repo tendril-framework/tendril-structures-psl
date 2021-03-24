@@ -30,8 +30,9 @@ class PslParserBase(ValidatableBase):
     _owner_ident_name = ParseSpec("{0}r{1}", ["ident", "revision"])
     _owner_desc_name = ParseSpec("{}", ["description"])
 
-    def __init__(self, psl_path, vctx=None):
+    def __init__(self, psl_path, generate_owner=False, vctx=None):
         self._psl_path = psl_path
+        self._generate_owner = generate_owner
 
         self._owner = None
         self.owner_ident = None
@@ -44,6 +45,10 @@ class PslParserBase(ValidatableBase):
         return self._psl_path
 
     def _create_owner(self):
+        if not self._generate_owner:
+            self._owner = BasicContainer()
+            return
+
         self._owner = GenericEntity()
         self._owner.define(ident=self.owner_ident,
                            desc=self.owner_desc,
@@ -51,6 +56,8 @@ class PslParserBase(ValidatableBase):
         self._owner.structure = BasicContainer(owner=self._owner)
 
     def _process_meta(self):
+        if not self._generate_owner:
+            return
         self.owner_ident = self._owner_ident_name.fmt.format(
             *[self._meta_data[x] for x in self._owner_ident_name.parts])
         self.owner_desc = self._owner_desc_name.fmt.format(
